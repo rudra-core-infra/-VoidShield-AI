@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{Request, State},
+    extract::{ConnectInfo, Request, State},
     http::{header, HeaderMap, HeaderName, HeaderValue, StatusCode},
     routing::{any, get},
     Router,
@@ -10,6 +10,7 @@ use rand::Rng;
 use reqwest::Client;
 use std::{
     env,
+    net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -72,21 +73,30 @@ fn is_hop_by_hop_or_framing(name: &HeaderName) -> bool {
         || s.eq_ignore_ascii_case("content-length")
 }
 
-// --- Validated IP Sanitizer (Defeats Header Injection, Spoofing & Format Pollution) ---
-fn extract_client_ip(h: &HeaderMap) -> String {
-    let raw = h
-        .get("cf-connecting-ip")
-        .or_else(|| h.get("x-real-ip"))
-        .or_else(|| h.get("x-forwarded-for"))
-        .and_then(|v| v.to_str().ok())
-        .map(|s| s.split(',').next().unwrap_or(s).trim());
+// --- Hardened IP Resolver (Defeats Header Spoofing via Peer Socket Fallback) ---
+fn extract_client_ip(h: &HeaderMap, peer_addr: SocketAddr) -> String {
+    // Only trust reverse proxy headers if explicitly enabled via TRUST_PROXY env
+    let trust_proxy = env::var("TRUST_PROXY")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
 
-    if let Some(candidate) = raw {
-        if let Ok(parsed) = candidate.parse::<std::net::IpAddr>() {
-            return parsed.to_string();
+    if trust_proxy {
+        let raw = h
+            .get("cf-connecting-ip")
+            .or_else(|| h.get("x-real-ip"))
+            .or_else(|| h.get("x-forwarded-for"))
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.split(',').next().unwrap_or(s).trim());
+
+        if let Some(candidate) = raw {
+            if let Ok(parsed) = candidate.parse::<std::net::IpAddr>() {
+                return parsed.to_string();
+            }
         }
     }
-    "127.0.0.1".to_string()
+
+    // Default: Hardware TCP Socket IP (Impossible for remote clients to forge or spoof)
+    peer_addr.ip().to_string()
 }
 
 // --- Production Lifecycle: Signal Trapping (SIGINT / SIGTERM) ---
@@ -123,10 +133,10 @@ async fn main() {
         limits: DashMap::new(),
         upstream: upstream.clone(),
         client: Client::builder()
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(300)) // Extended 300s timeout for long LLM reasoning streams
             .connect_timeout(Duration::from_secs(10))
-            .pool_max_idle_per_host(100)
-            .pool_idle_timeout(Duration::from_secs(15))
+            .pool_max_idle_per_host(256)       // High-throughput idle pool
+            .pool_idle_timeout(Duration::from_secs(60))
             .tcp_keepalive(Duration::from_secs(60))
             .tcp_nodelay(true)
             .no_gzip()
@@ -169,10 +179,10 @@ async fn main() {
         .await
         .unwrap_or_else(|err| panic!("Fatal: Failed to bind on {bind_addr}: {err}"));
     
-    println!("🛡️ Tier 1 Drop-in Shield [UNIVERSAL CORE v3.1] listening on {bind_addr}");
+    println!("🛡️ Tier 1 Drop-in Shield [UNIVERSAL HARDENED v3.2] listening on {bind_addr}");
     println!("🔗 Forwarding upstream target: {upstream}");
 
-    axum::serve(listener, app.into_make_service())
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await
         .unwrap();
@@ -180,12 +190,14 @@ async fn main() {
 
 async fn proxy(
     State(s): State<Arc<AppState>>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     h: HeaderMap,
     req: Request<Body>,
 ) -> axum::response::Response<Body> {
     REQS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
-    let ip = extract_client_ip(&h);
+    // Hardware-verified IP extraction defeats X-Forwarded-For injection
+    let ip = extract_client_ip(&h, addr);
 
     // Rate Limiting Evaluation with In-Memory Allocation Guard
     let is_tarpitted = {
@@ -252,7 +264,7 @@ async fn proxy(
             .unwrap();
     }
 
-    // Path & Target URL Normalization
+    // Path & Target URL Normalization (Defeats path traversal & SSRF injection)
     let upstream_base = s.upstream.trim_end_matches('/');
     let path_query = req.uri().path_and_query().map(|x| x.as_str()).unwrap_or("/");
     let clean_path = if path_query.starts_with('/') { path_query } else { "/" };
