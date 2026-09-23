@@ -1,0 +1,9 @@
+# Rust target directory
+/target
+Cargo.lock
+
+# IDE and OS files
+.DS_Store
+.idea/
+*.swp
+*.log

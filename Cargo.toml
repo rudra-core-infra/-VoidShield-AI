@@ -1,0 +1,13 @@
+[package]
+name = "tier1-dropin-shield"
+version = "1.0.0"
+edition = "2021"
+description = "Zero-config Universal API Shield - Token Bucket + Chaos Tarpit"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1.36", features = ["full", "signal"] }
+tokio-stream = "0.1.15"
+reqwest = { version = "0.12", default-features = false, features = ["stream", "rustls-tls"] }
+dashmap = "5.5"
+rand = "0.8"
