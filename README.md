@@ -7,15 +7,26 @@
 [![Rust: 1.75+](https://img.shields.io/badge/Rust-2021_Edition-orange.svg)](https://www.rust-lang.org/)
 [![Docker: Ready](https://img.shields.io/badge/Docker-Multi--stage_Slim-2496ED.svg)](Dockerfile)
 [![RPS: 50,000+](https://img.shields.io/badge/Throughput-50k%2B_RPS-brightgreen.svg)]()
-[![Enterprise Ready: Tier 2](https://img.shields.io/badge/Upgrade-Tier_2_Hyper--Scale_Ready-purple.svg)](../tier2-hyperscale-gateway)
+[![Tier 2 Waitlist](https://img.shields.io/badge/Enterprise_Tier_2-Join_Waitlist-blueviolet.svg)](mailto:roshansingh11yt@gmail.com)
 
 ---
 
-## 🚀 Tier 2 Enterprise Upgrade Notice
-> 💡 **Need Multi-Region Global Sync & ML Bot Detection?**  
-> **Tier 2 (Hyper-Scale Gateway) is officially PRODUCTION READY!**  
-> Tier 2 adds distributed Redis Cluster synchronization, Machine-Learning cadence anomaly tracking ($\sigma^2 < 25$), and cryptographic JWT Role-Based Access Control (RBAC) for Enterprise multi-region clusters handling 1M+ RPS.  
-> Check out the [`tier2-hyperscale-gateway`](../tier2-hyperscale-gateway) directory.
+## 🚀 Enterprise Tier 2 (Hyper-Scale Gateway) — Private Waitlist
+
+> 🏢 **Scaling beyond a single server or need multi-region cluster protection?**  
+> **Tier 2 (Distributed Gateway)** is currently in private early access for high-throughput enterprise infrastructure handling 1M+ requests per day.
+
+| Feature | Tier 1 (Free & Open Source) | Tier 2 (Enterprise Waitlist) |
+| :--- | :--- | :--- |
+| **Architecture** | Single-Binary Drop-In Proxy | Distributed Multi-Region Gateway |
+| **Throughput** | 50,000+ RPS per instance | 1,000,000+ RPS Global Cluster |
+| **State Storage** | Lock-Free In-Memory (DashMap) | Sub-millisecond Redis Cluster Sync |
+| **Bot Detection** | Token-Bucket + Chaos Tarpit | ML Cadence Anomaly Detection |
+| **Auth & Routing** | Transparent Pass-Through | Hardware-Speed JWT RBAC & Quotas |
+| **Licensing** | AGPL-3.0 (Strict SaaS Copyleft) | Commercial Closed-Source Cloud Exemption |
+
+📩 **Join the Private Waitlist:**  
+To request early enterprise access or pilot deployment, email **roshansingh11yt@gmail.com** with your organization name and estimated daily volume.
 
 ---
 
