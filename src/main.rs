@@ -25,8 +25,9 @@ static TARPITS_TOTAL: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE_TARPITS: AtomicUsize = AtomicUsize::new(0);
 static FAST_DROPS: AtomicUsize = AtomicUsize::new(0);
 
-// --- Mathematical Limits & Circuit Breakers ---
-const MAX_ACTIVE_TARPITS: usize = 5_000;       // Circuit breaker protecting OS Epoll / File Descriptors
+// --- Mathematical Limits & Kernel Protections ---
+// Scaled to 512 so active tarpit sockets never exhaust Linux default ulimit -n (1024)
+const MAX_ACTIVE_TARPITS: usize = 512;
 const MAX_BODY_SIZE: usize = 10 * 1024 * 1024; // Strict 10MB Anti-OOM memory buffer cap
 const MAX_TRACKED_ENTRIES: usize = 500_000;    // Hard ceiling on DashMap allocations (Heap exhaustion shield)
 
@@ -196,6 +197,16 @@ async fn proxy(
 ) -> axum::response::Response<Body> {
     REQS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
+    // Strict URI Path Normalization & Traversal Shield
+    let raw_path = req.uri().path_and_query().map(|x| x.as_str()).unwrap_or("/");
+    if raw_path.contains("..") || raw_path.starts_with("//") {
+        return axum::response::Response::builder()
+            .status(StatusCode::BAD_REQUEST)
+            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+            .body(Body::from("Bad Request: Invalid path traversal detected"))
+            .unwrap();
+    }
+
     // Hardware-verified IP extraction defeats X-Forwarded-For injection
     let ip = extract_client_ip(&h, addr);
 
@@ -215,7 +226,7 @@ async fn proxy(
     if is_tarpitted {
         TARPITS_TOTAL.fetch_add(1, Ordering::Relaxed);
 
-        // Kernel File-Descriptor Protection: Circuit Breaker
+        // Kernel File-Descriptor Protection: Circuit Breaker capped to safe ulimit bounds (512)
         let current_active = ACTIVE_TARPITS.load(Ordering::Relaxed);
         if current_active >= MAX_ACTIVE_TARPITS {
             FAST_DROPS.fetch_add(1, Ordering::Relaxed);
@@ -264,10 +275,9 @@ async fn proxy(
             .unwrap();
     }
 
-    // Path & Target URL Normalization (Defeats path traversal & SSRF injection)
+    // Path & Target URL Normalization
     let upstream_base = s.upstream.trim_end_matches('/');
-    let path_query = req.uri().path_and_query().map(|x| x.as_str()).unwrap_or("/");
-    let clean_path = if path_query.starts_with('/') { path_query } else { "/" };
+    let clean_path = if raw_path.starts_with('/') { raw_path } else { "/" };
     let target_url = format!("{upstream_base}{clean_path}");
 
     // Target Host Derivation for Virtual Host & TLS SNI Synchronization
